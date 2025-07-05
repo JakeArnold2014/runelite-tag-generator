@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bank Tag Tab Generator</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.min.css">
+    <style>
+        /* Custom styles for the Bank Tag Tab Generator */
+        .tag-tab-box {
+            border: 2px solid #0074d9;
+            border-radius: 8px;
+            padding: 1.5em;
+            background: #f4f8fb;
+            margin-top: 2em;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            word-break: break-all;
+            white-space: pre-wrap;
+        }
+        .copy-btn {
+            float: right;
+            margin-top: -2.5em;
+        }
+        .image-select {
+            max-width: 64px;
+            max-height: 64px;
+            margin: 0.2em;
+            border: 2px solid transparent;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .image-select.selected {
+            border-color: #0074d9;
+        }
+        .loading {
+            text-align: center;
+            padding: 2em;
+            color: #666;
+        }
+        .error {
+            color: #d32f2f;
+            background: #ffebee;
+            padding: 1em;
+            border-radius: 4px;
+            margin: 1em 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Bank Tag Tab Generator</h2>
+        
+        <div id="loading" class="loading">
+            Loading item data...
+        </div>
+        
+        <div id="error" class="error" style="display:none;">
+            Failed to load item data. Please refresh the page to try again.
+        </div>
+        
+        <form id="tag-form" style="display:none;">
+            <label for="tag_name">Tag Tab Name</label>
+            <input type="text" id="tag_name" name="tag_name" required>
+
+            <label for="item_name">Tag Tab Image (optional - search item name)</label>
+            <input type="text" id="item_name" name="item_name" autocomplete="off" placeholder="Type to search... (optional - will use first matching item if not selected)">
+            <div id="item-dropdown" style="position:relative; z-index:10;"></div>
+            <img id="image-preview" class="image-preview" src="" alt="Item Icon Preview" style="display:none;">
+            <input type="hidden" id="tag_image_id" name="tag_image_id">
+
+            <label for="tag_properties">Tag Properties & Categories (Double click to Add + Click tag to remove)</label>
+            <input type="text" id="tag-properties-search" placeholder="Search tag properties and categories..." style="margin-bottom:0.5em;width:100%;">
+            <select id="tag_properties" name="tag_properties" multiple style="height: 120px;">
+                <!-- Options will be populated by JavaScript -->
+            </select>
+
+            <div id="selected-tags" style="margin-top: 1em; margin-bottom: 1.5em; display: flex; align-items: center; flex-wrap: wrap;"></div>
+
+            <div style="margin-bottom: 1em;">
+                <label style="margin-right:1em; font-weight:500;">Match Mode:</label>
+                <label style="margin-right:1em;"><input type="radio" name="match_mode" value="inclusive" checked> Inclusive (ALL tags/categories)</label>
+                <label><input type="radio" name="match_mode" value="exclusive"> Exclusive (EITHER tag/category)</label>
+            </div>
+ 
+            <button type="submit">Generate</button>
+        </form>
+
+        <div id="result" style="display:none;">
+            <button class="copy-btn" onclick="copyTagTab()">Copy</button>
+            <div style="display: flex; align-items: center; gap: 1em; margin-bottom: 1em;">
+                <img id="result-image" src="" alt="" style="width: 40px; height: 40px; display: none; border-radius: 6px; border: 1px solid #ccc; background: #fff;">
+                <div id="result-tags" style="display: flex; flex-wrap: wrap; gap: 0.5em;"></div>
+            </div>
+            <div class="tag-tab-box" id="tag-tab-box"></div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * Bank Tag Tab Generator - Static Version
+         * A client-side tool for generating RuneLite bank tag tabs
+         * 
+         * Features:
+         * - Dynamic item filtering by properties and categories
+         * - Interactive tag selection with visual feedback
+         * - Automatic image fallback for tab icons
+         * - Copy to clipboard functionality
+         */
+        // Global variables
+        let itemMappings = [];
+        let itemIdMap = {};
+        let itemNames = [];
+        let tagProperties = [];
+        let categories = [];
+        let selectedTags = [];
+
+        // Configuration
+        const ITEM_MAPPING_JSON_URL = "https://gist.githubusercontent.com/JakeArnold2014/174dc9bd34eb4a8af59b39d88fe06c7b/raw/5ff7e531452eda61ca279efcfaf33ae98e57dc2e/ItemMappingFinal.json";
+
+        // Load data on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadItemData();
+        });
+
+        async function loadItemData() {
+            try {
+                const response = await fetch(ITEM_MAPPING_JSON_URL);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                itemMappings = await response.json();
+                
+                // Process the data
+                processItemData();
+                
+                // Initialize the UI
+                initializeUI();
+                
+                // Hide loading, show form
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('tag-form').style.display = 'block';
+                
+            } catch (error) {
+                console.error('Failed to load item data:', error);
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').style.display = 'block';
+            }
+        }
+
+        function processItemData() {
+            // Create item ID map
+            itemIdMap = {};
+            itemNames = [];
+            
+            itemMappings.forEach(item => {
+                itemIdMap[item.name] = item.id;
+                itemNames.push(item.name);
+            });
+            
+            itemNames.sort();
+            
+            // Extract tag properties and categories
+            if (itemMappings.length > 0) {
+                const firstItem = itemMappings[0];
+                tagProperties = Object.keys(firstItem).filter(key => typeof firstItem[key] === 'boolean');
+                
+                const categorySet = new Set();
+                itemMappings.forEach(item => {
+                    if (item.category && Array.isArray(item.category)) {
+                        item.category.forEach(cat => categorySet.add(cat));
+                    }
+                });
+                categories = Array.from(categorySet).sort();
+            }
+        }
+
+        function initializeUI() {
+            populateTagPropertiesSelect();
+            setupEventListeners();
+        }
+
+        function populateTagPropertiesSelect() {
+            const select = document.getElementById('tag_properties');
+            select.innerHTML = '';
+            
+            // Add tag properties
+            tagProperties.forEach(prop => {
+                const option = document.createElement('option');
+                option.value = prop;
+                option.textContent = userFriendlyLabel(prop);
+                select.appendChild(option);
+            });
+            
+            // Add categories with "Category: " prefix
+            categories.forEach(cat => {
+                const option = document.createElement('option');
+                option.value = cat;
+                option.textContent = 'Category: ' + cat;
+                select.appendChild(option);
+            });
+        }
+
+        // Use the main userFriendlyLabel function for consistency
+
+        function setupEventListeners() {
+            // Tag search
+            document.getElementById('tag-properties-search').addEventListener('input', function() {
+                filterSelectOptions(document.getElementById('tag_properties'), this.value);
+            });
+
+            // Double-click to add tag
+            document.getElementById('tag_properties').addEventListener('dblclick', function(e) {
+                if (e.target && e.target.tagName === 'OPTION') {
+                    const val = e.target.value;
+                    if (!selectedTags.includes(val)) {
+                        selectedTags.push(val);
+                        e.target.selected = true;
+                        updateSelectedTags();
+                    }
+                }
+            });
+
+            // Item search
+            const itemInput = document.getElementById('item_name');
+            const dropdown = document.getElementById('item-dropdown');
+
+            itemInput.addEventListener('input', function() {
+                const val = this.value.toLowerCase();
+                dropdown.innerHTML = '';
+                if (!val) return;
+                
+                const matches = itemNames.filter(name => name.toLowerCase().includes(val)).slice(0, 10);
+                if (matches.length === 0) return;
+                
+                const list = document.createElement('div');
+                list.style.position = 'absolute';
+                list.style.background = '#fff';
+                list.style.border = '1px solid #ccc';
+                list.style.width = itemInput.offsetWidth + 'px';
+                list.style.maxHeight = '250px';
+                list.style.overflowY = 'auto';
+                
+                matches.forEach(name => {
+                    const id = itemIdMap[name];
+                    const option = document.createElement('div');
+                    option.style.display = 'flex';
+                    option.style.alignItems = 'center';
+                    option.style.cursor = 'pointer';
+                    option.style.padding = '4px 8px';
+                    option.innerHTML = `<img src='https://static.runelite.net/cache/item/icon/${id}.png' style='width:24px;height:24px;margin-right:8px;'>${name}`;
+                    option.addEventListener('mousedown', function(e) {
+                        e.preventDefault();
+                        itemInput.value = name;
+                        document.getElementById('tag_image_id').value = id;
+                        const img = document.getElementById('image-preview');
+                        img.src = `https://static.runelite.net/cache/item/icon/${id}.png`;
+                        img.style.display = 'inline-block';
+                        dropdown.innerHTML = '';
+                    });
+                    list.appendChild(option);
+                });
+                dropdown.appendChild(list);
+            });
+
+            // Hide dropdown on blur
+            itemInput.addEventListener('blur', function() {
+                setTimeout(() => { dropdown.innerHTML = ''; }, 150);
+            });
+
+            // Form submission
+            document.getElementById('tag-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                generateTagTab();
+            });
+        }
+
+        function filterSelectOptions(selectElem, searchValue) {
+            const options = Array.from(selectElem.options);
+            const lower = searchValue.toLowerCase();
+            options.forEach(opt => {
+                if (!lower || opt.text.toLowerCase().includes(lower)) {
+                    opt.style.display = '';
+                } else {
+                    opt.style.display = 'none';
+                }
+            });
+        }
+
+        function updateSelectedTags() {
+            const tagSelect = document.getElementById('tag_properties');
+            const selectedTagsDiv = document.getElementById('selected-tags');
+            
+            // Clear and re-select options
+            Array.from(tagSelect.options).forEach(opt => {
+                opt.selected = selectedTags.includes(opt.value);
+            });
+            
+            // Render tag bubbles
+            renderTags(selectedTagsDiv, selectedTags, true);
+        }
+
+        function renderTags(container, tags, interactive = true) {
+            container.innerHTML = '';
+            tags.forEach(tag => {
+                const el = document.createElement('span');
+                let displayText;
+                
+                // Check if it's a category or a tag property
+                if (categories.includes(tag)) {
+                    displayText = 'Category: ' + tag;
+                } else if (tag.includes('_') || tag.startsWith('is_') || tag.startsWith('has_') || tag.startsWith('can_')) {
+                    displayText = userFriendlyLabel(tag);
+                } else {
+                    displayText = tag;
+                }
+                
+                el.textContent = displayText;
+                el.style.cssText = `
+                    display: inline-block;
+                    background: #eaf5ff;
+                    color: #0969da;
+                    border: 1px solid #b6e3ff;
+                    border-radius: 2em;
+                    font-size: 0.9em;
+                    padding: 0.2em 0.9em;
+                    margin: 0 0.2em 0.2em 0;
+                    font-weight: 500;
+                    letter-spacing: 0.01em;
+                    vertical-align: middle;
+                    cursor: ${interactive ? 'pointer' : 'default'};
+                `;
+                
+                if (interactive) {
+                    el.title = 'Click to remove';
+                    el.addEventListener('click', function() {
+                        selectedTags = selectedTags.filter(t => t !== tag);
+                        const option = Array.from(document.getElementById('tag_properties').options).find(opt => opt.value === tag);
+                        if (option) option.selected = false;
+                        updateSelectedTags();
+                    });
+                }
+                container.appendChild(el);
+            });
+        }
+
+        function userFriendlyLabel(prop) {
+            let label = prop.replace(/_/g, ' ');
+            if (label.startsWith('is ')) label = 'Is ' + label.slice(3);
+            else if (label.startsWith('has ')) label = 'Has ' + label.slice(4);
+            else if (label.startsWith('can ')) label = 'Can ' + label.slice(4);
+            
+            // Do Grand Exchange replacement AFTER other replacements to avoid conflicts
+            label = label.replace('on grand exchange', 'on the Grand Exchange');
+            
+            // Capitalize first letter if not already
+            label = label.charAt(0).toUpperCase() + label.slice(1);
+            return label;
+        }
+
+        function generateTagTab() {
+            const tagName = document.getElementById('tag_name').value;
+            let tagImageId = document.getElementById('tag_image_id').value;
+            const tagPropertiesSelect = document.getElementById('tag_properties');
+            const allSelected = Array.from(tagPropertiesSelect.selectedOptions).map(o => o.value);
+            const matchMode = document.querySelector('input[name="match_mode"]:checked').value;
+            
+            // Separate tag properties (boolean attributes) from categories
+            const selectedTagProperties = allSelected.filter(item => tagProperties.includes(item));
+            const selectedTagCategories = allSelected.filter(item => categories.includes(item));
+            
+            // Generate matching items
+            const matchingIds = new Set();
+            
+            itemMappings.forEach(item => {
+                // Inclusive: must have ALL selected properties True AND ALL selected categories present
+                // Exclusive: must have ANY selected property True OR ANY selected category present
+                if (matchMode === 'inclusive') {
+                    const propMatch = selectedTagProperties.length === 0 || selectedTagProperties.every(prop => item[prop] === true);
+                    const catMatch = selectedTagCategories.length === 0 || selectedTagCategories.every(cat => item.category && item.category.includes(cat));
+                    if (propMatch && catMatch) {
+                        matchingIds.add(item.id.toString());
+                    }
+                } else {  // exclusive
+                    const propMatch = selectedTagProperties.length > 0 && selectedTagProperties.some(prop => item[prop] === true);
+                    const catMatch = selectedTagCategories.length > 0 && item.category && selectedTagCategories.some(cat => item.category.includes(cat));
+                    if (propMatch || catMatch) {
+                        matchingIds.add(item.id.toString());
+                    }
+                }
+            });
+            
+            // Check if no items match the filters
+            if (matchingIds.size === 0) {
+                document.getElementById('tag-tab-box').textContent = "No items match selected filters";
+                document.getElementById('result').style.display = 'block';
+                document.getElementById('result-image').style.display = 'none';
+                renderTags(document.getElementById('result-tags'), [...selectedTagProperties, ...selectedTagCategories], false);
+                return;
+            }
+            
+            // If no image is selected, use the first matching item's ID as the image
+            if (!tagImageId) {
+                const sortedIds = Array.from(matchingIds).sort((a, b) => parseInt(a) - parseInt(b));
+                tagImageId = sortedIds[0];
+            }
+            
+            // Generate tag tab string
+            const sortedIds = Array.from(matchingIds).sort((a, b) => parseInt(a) - parseInt(b));
+            const tagLine = ['banktags', '1', tagName, tagImageId, ...sortedIds];
+            const tagTabStr = tagLine.join(',');
+            
+            // Display results
+            document.getElementById('tag-tab-box').textContent = tagTabStr;
+            document.getElementById('result').style.display = 'block';
+            
+            // Show tags and image in result (non-interactive)
+            const allSelectedTags = [...selectedTagProperties, ...selectedTagCategories];
+            renderTags(document.getElementById('result-tags'), allSelectedTags, false);
+            
+            const resultImage = document.getElementById('result-image');
+            resultImage.src = `https://static.runelite.net/cache/item/icon/${tagImageId}.png`;
+            resultImage.style.display = 'inline-block';
+        }
+
+        // Copy to clipboard
+        function copyTagTab() {
+            const text = document.getElementById('tag-tab-box').textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                console.log('Tag tab copied to clipboard');
+            }).catch(err => {
+                console.error('Failed to copy to clipboard:', err);
+            });
+        }
+    </script>
+</body>
+</html>
