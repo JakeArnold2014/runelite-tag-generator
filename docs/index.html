@@ -16,10 +16,15 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.08);
             word-break: break-all;
             white-space: pre-wrap;
+            font-size: 0.9em;
         }
         .copy-btn {
             float: right;
             margin-top: -2.5em;
+            padding: 0.5em 1em;
+            font-size: 0.9em;
+            min-height: 44px; /* Touch-friendly button size */
+            min-width: 44px;
         }
         .image-select {
             max-width: 64px;
@@ -43,6 +48,113 @@
             padding: 1em;
             border-radius: 4px;
             margin: 1em 0;
+        }
+        
+        /* Mobile-friendly styles */
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            h2 {
+                font-size: 1.8rem;
+                margin-bottom: 1rem;
+            }
+            
+            input[type="text"], select, button {
+                font-size: 16px; /* Prevents zoom on iOS */
+                padding: 0.75rem;
+                margin-bottom: 1rem;
+            }
+            
+            select[multiple] {
+                height: 100px; /* Smaller on mobile */
+            }
+            
+            .tag-tab-box {
+                padding: 1rem;
+                font-size: 0.8rem;
+                margin-top: 1rem;
+            }
+            
+            .copy-btn {
+                position: static;
+                float: none;
+                margin: 0 0 1rem 0;
+                width: 100%;
+            }
+            
+            /* Make radio buttons touch-friendly */
+            input[type="radio"] {
+                transform: scale(1.2);
+                margin-right: 0.5rem;
+            }
+            
+            /* Improve tag bubbles on mobile */
+            .tag-bubble {
+                font-size: 0.8rem;
+                padding: 0.3em 0.7em;
+                margin: 0.2em;
+                min-height: 32px;
+                display: inline-flex;
+                align-items: center;
+            }
+            
+            /* Result display improvements */
+            #result-tags {
+                flex-direction: column;
+                gap: 0.3em;
+            }
+            
+            #result-image {
+                width: 32px;
+                height: 32px;
+            }
+        }
+        
+        /* Very small screens */
+        @media (max-width: 480px) {
+            .container {
+                padding: 0.5rem;
+            }
+            
+            h2 {
+                font-size: 1.5rem;
+            }
+            
+            input[type="text"], select, button {
+                font-size: 16px;
+                padding: 0.6rem;
+            }
+            
+            .tag-tab-box {
+                font-size: 0.7rem;
+                padding: 0.8rem;
+            }
+            
+            /* Stack radio buttons vertically on very small screens */
+            .match-mode-container {
+                display: flex;
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            
+            .match-mode-container label {
+                margin-right: 0;
+            }
+        }
+        
+        /* Touch-friendly improvements */
+        @media (hover: none) and (pointer: coarse) {
+            /* Touch devices */
+            button, input, select {
+                min-height: 44px;
+            }
+            
+            .tag-bubble {
+                min-height: 44px;
+                padding: 0.5em 1em;
+            }
         }
     </style>
 </head>
@@ -76,7 +188,7 @@
 
             <div id="selected-tags" style="margin-top: 1em; margin-bottom: 1.5em; display: flex; align-items: center; flex-wrap: wrap;"></div>
 
-            <div style="margin-bottom: 1em;">
+            <div class="match-mode-container" style="margin-bottom: 1em;">
                 <label style="margin-right:1em; font-weight:500;">Match Mode:</label>
                 <label style="margin-right:1em;"><input type="radio" name="match_mode" value="inclusive" checked> Inclusive (ALL tags/categories)</label>
                 <label><input type="radio" name="match_mode" value="exclusive"> Exclusive (EITHER tag/category)</label>
@@ -234,34 +346,63 @@
                 if (matches.length === 0) return;
                 
                 const list = document.createElement('div');
-                list.style.position = 'absolute';
-                list.style.background = '#fff';
-                list.style.border = '1px solid #ccc';
-                list.style.width = itemInput.offsetWidth + 'px';
-                list.style.maxHeight = '250px';
-                list.style.overflowY = 'auto';
+                list.style.cssText = `
+                    position: absolute;
+                    background: #fff;
+                    border: 1px solid #ccc;
+                    border-radius: 4px;
+                    width: ${itemInput.offsetWidth}px;
+                    max-height: 250px;
+                    overflow-y: auto;
+                    z-index: 1000;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                `;
                 
                 matches.forEach(name => {
                     const id = itemIdMap[name];
                     const option = document.createElement('div');
-                    option.style.display = 'flex';
-                    option.style.alignItems = 'center';
-                    option.style.cursor = 'pointer';
-                    option.style.padding = '4px 8px';
-                    option.innerHTML = `<img src='https://static.runelite.net/cache/item/icon/${id}.png' style='width:24px;height:24px;margin-right:8px;'>${name}`;
+                    option.style.cssText = `
+                        display: flex;
+                        align-items: center;
+                        cursor: pointer;
+                        padding: 8px;
+                        border-bottom: 1px solid #eee;
+                        min-height: 44px;
+                        transition: background-color 0.2s;
+                    `;
+                    option.innerHTML = `<img src='https://static.runelite.net/cache/item/icon/${id}.png' style='width:24px;height:24px;margin-right:8px;flex-shrink:0;'><span style='font-size:0.9rem;'>${name}</span>`;
+                    
                     option.addEventListener('mousedown', function(e) {
                         e.preventDefault();
-                        itemInput.value = name;
-                        document.getElementById('tag_image_id').value = id;
-                        const img = document.getElementById('image-preview');
-                        img.src = `https://static.runelite.net/cache/item/icon/${id}.png`;
-                        img.style.display = 'inline-block';
-                        dropdown.innerHTML = '';
+                        selectItem(name, id);
                     });
+                    
+                    option.addEventListener('touchstart', function(e) {
+                        e.preventDefault();
+                        selectItem(name, id);
+                    });
+                    
+                    option.addEventListener('mouseover', function() {
+                        this.style.backgroundColor = '#f5f5f5';
+                    });
+                    
+                    option.addEventListener('mouseout', function() {
+                        this.style.backgroundColor = '';
+                    });
+                    
                     list.appendChild(option);
                 });
                 dropdown.appendChild(list);
             });
+            
+            function selectItem(name, id) {
+                itemInput.value = name;
+                document.getElementById('tag_image_id').value = id;
+                const img = document.getElementById('image-preview');
+                img.src = `https://static.runelite.net/cache/item/icon/${id}.png`;
+                img.style.display = 'inline-block';
+                dropdown.innerHTML = '';
+            }
 
             // Hide dropdown on blur
             itemInput.addEventListener('blur', function() {
@@ -316,6 +457,7 @@
                 }
                 
                 el.textContent = displayText;
+                el.className = 'tag-bubble';
                 el.style.cssText = `
                     display: inline-block;
                     background: #eaf5ff;
@@ -329,15 +471,27 @@
                     letter-spacing: 0.01em;
                     vertical-align: middle;
                     cursor: ${interactive ? 'pointer' : 'default'};
+                    user-select: none;
+                    -webkit-user-select: none;
+                    -webkit-tap-highlight-color: transparent;
                 `;
                 
                 if (interactive) {
-                    el.title = 'Click to remove';
+                    el.title = 'Tap to remove';
                     el.addEventListener('click', function() {
                         selectedTags = selectedTags.filter(t => t !== tag);
                         const option = Array.from(document.getElementById('tag_properties').options).find(opt => opt.value === tag);
                         if (option) option.selected = false;
                         updateSelectedTags();
+                    });
+                    
+                    // Add touch feedback
+                    el.addEventListener('touchstart', function() {
+                        el.style.transform = 'scale(0.95)';
+                    });
+                    
+                    el.addEventListener('touchend', function() {
+                        el.style.transform = 'scale(1)';
                     });
                 }
                 container.appendChild(el);
@@ -426,11 +580,58 @@
         // Copy to clipboard
         function copyTagTab() {
             const text = document.getElementById('tag-tab-box').textContent;
-            navigator.clipboard.writeText(text).then(() => {
-                console.log('Tag tab copied to clipboard');
-            }).catch(err => {
-                console.error('Failed to copy to clipboard:', err);
-            });
+            
+            // Try modern clipboard API first
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(() => {
+                    showCopyFeedback('Tag tab copied to clipboard!');
+                }).catch(err => {
+                    console.error('Failed to copy to clipboard:', err);
+                    fallbackCopyTextToClipboard(text);
+                });
+            } else {
+                // Fallback for older browsers
+                fallbackCopyTextToClipboard(text);
+            }
+        }
+        
+        // Fallback copy method for older browsers or when clipboard API fails
+        function fallbackCopyTextToClipboard(text) {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showCopyFeedback('Tag tab copied to clipboard!');
+                } else {
+                    showCopyFeedback('Copy failed. Please select and copy manually.');
+                }
+            } catch (err) {
+                console.error('Fallback copy failed:', err);
+                showCopyFeedback('Copy not supported. Please select and copy manually.');
+            }
+            
+            document.body.removeChild(textArea);
+        }
+        
+        // Show copy feedback to user
+        function showCopyFeedback(message) {
+            const button = document.querySelector('.copy-btn');
+            const originalText = button.textContent;
+            button.textContent = 'Copied!';
+            button.style.background = '#28a745';
+            
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.style.background = '';
+            }, 2000);
         }
     </script>
 </body>
